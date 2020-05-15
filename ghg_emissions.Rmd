@@ -1,0 +1,81 @@
+---
+title: "CAISO GhG Emissions"
+author: "Christopher Hull"
+date: "5/8/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Read in data
+```{r}
+library(reshape)
+library(tidyverse)
+#library(datetime)
+#library(chron)
+
+# wd <- "C:/Users/liusa/github/MSE243"
+# 
+# combining <- function(pattern) {
+#   files <- list.files(pattern = pattern)
+#   for (f in files) {
+#     datum <- read.csv(f)
+#     header <- colnames(datum)[1]
+#     datum <- 
+#       datum %>% 
+#       dplyr::rename("Date" = header)
+#     datum["Date"][1] <- substring(header,2)
+#     write.csv(datum,f,row.names = F)
+#   }
+#   return(do.call(rbind, lapply(files,read.csv)))
+# }
+# 
+# setwd(paste0(wd,"/2019_ghg"))
+# 
+# caiso_2019 <- 
+#   combining("CAISO-co2-2019[0-9][0-9][0-9][0-9].csv")
+# 
+# setwd(paste0(wd,"/2020_ghg"))
+# 
+# caiso_2020 <-
+#   combining("CAISO-co2-20200[0-9][0-9][0-9].csv")
+# 
+# setwd(wd)
+# 
+# write.csv(caiso_2019,"caiso_2019.csv",row.names=F)
+# write.csv(caiso_2020,"caiso_2020.csv",row.names=F)
+
+caiso_2019 <- read.csv("caiso_2019.csv")
+caiso_2020 <- read.csv("caiso_2020.csv")
+
+```
+
+Reshape, clean and condense into hourly -- example
+```{r}
+data_2019 <- melt(caiso_2019, id = c("Date"))
+data_2019 <- data_2019 %>%
+  dplyr::rename(time = variable,
+         "CO2" = value) %>% #example name
+  mutate(time = substring(time,2,3)) %>%
+  group_by(Date,time) %>%
+  summarise("CO2_sum"= sum(CO2)) #condense into hourly
+
+data_2020 <- melt(caiso_2020, id = c("Date"))
+data_2020 <- data_2020 %>%
+  dplyr::rename(time = variable,
+         "CO2" = value) %>% #example name
+  mutate(time = substring(time,2,3)) %>%
+  group_by(Date,time) %>%
+  summarise("CO2_sum"= sum(CO2)) #condense into hourly
+```
+
+
+Plot data
+```{r}
+ggplot(tail(data_2019,240)) + 
+  geom_line(aes(x = time, y = CO2_sum, color=Date , group=Date))
+ggplot(tail(data_2020,240)) + 
+  geom_line(aes(x = time, y = CO2_sum, color=Date , group=Date))
+```
