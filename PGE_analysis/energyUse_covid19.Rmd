@@ -1,0 +1,387 @@
+---
+title: "Commercial vs. Residential Energy Use Impacts due to COVID-19"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup-libraries}
+library(knitr)
+library(shinydashboard)
+library(tidyverse)
+library(leaflet)
+library(sf)
+library(reshape)
+library(htmltools)
+
+setwd("P:/Stanford/Classes/MSE243 - Energy and Environmental Policy Analysis/PGE_analysis")
+
+mapbox_sat <- "https://api.mapbox.com/styles/v1/samanyl/ck9hpl0sm0fuq1ip8yfb2yrn8/tiles/256/{z}/{x}/{y}@2x?access_token=pk.eyJ1Ijoic2FtYW55bCIsImEiOiJjazlocGNvYWgxMHhxM2Rud2pxdzVnMnp2In0.D_j3K9tXiEddHH-8UUkeZQ"
+mapbox_satAtt <- "© <a href='https://www.mapbox.com/map-feedback/'>Mapbox</a> Satellite Map"
+```
+
+```{r setup-data}
+# filter based on data values != na or 0
+
+combining <- function(pattern) {
+  files <- list.files(pattern = pattern)
+  return(do.call(rbind, lapply(files,read_csv)))
+}
+
+electric <- 
+  combining("PGE_20[1-2][0-9]_Q[1-4]_ElectricUsageByZip.csv") %>% 
+  filter(CUSTOMERCLASS == c("Elec- Residential","Elec- Commercial")) 
+
+electric$ZIPCODE = as.character(electric$ZIPCODE)
+
+gas <- 
+  combining("PGE_20[1-2][0-9]_Q[1-4]_GasUsageByZip.csv") %>% 
+  filter(CUSTOMERCLASS == c("Gas- Residential","Gas- Commercial")) 
+
+gas$ZIPCODE = as.character(gas$ZIPCODE)
+
+bay_zctas <- readRDS("P:/Stanford/Classes/CEE218Z - Shaping the Future of the Bay/bay_zctas.rds")
+```
+
+```{r map-data}
+
+# only analyzed between January through March of 2019 and 2020
+electric_zip <- 
+  electric %>% 
+  filter(MONTH <= 3) %>% 
+  group_by(ZIPCODE,YEAR,CUSTOMERCLASS) %>% 
+    summarize(
+    SUMKWH = sum(TOTALKWH),
+    AVGKWH = mean(AVERAGEKWH, na.rm = T)
+    )
+
+electric_pivot_sum <- 
+  electric_zip %>%
+  cast(ZIPCODE ~ YEAR + CUSTOMERCLASS, fun.aggregate = sum, value="SUMKWH") %>% 
+  as.data.frame() %>%
+  left_join(bay_zctas,by=c("ZIPCODE"="ZCTA5CE10"))
+
+electric_pivot <- 
+  electric_zip %>%
+  cast(ZIPCODE ~ YEAR + CUSTOMERCLASS, fun.aggregate = mean, value=c("AVGKWH")) %>% 
+  as.data.frame() %>% 
+  left_join(electric_pivot_sum,by=c("ZIPCODE"),suffix=c("_avg","_sum")) %>% 
+  st_as_sf(dim = "XY", sf_column_name = "geometry") %>% 
+  st_transform(crs=4326)
+
+electricComm_avg2020 <- 
+  electric_pivot %>%
+  distinct(ZIPCODE,.keep_all = T) %>% 
+        filter(`2019_Elec- Commercial_avg` < `2020_Elec- Commercial_avg` & 
+                 !is.na(`2019_Elec- Commercial_avg`) & 
+                 !is.na(`2020_Elec- Commercial_avg`))
+
+electricComm_avg2019 <- 
+  electric_pivot %>%
+  distinct(ZIPCODE,.keep_all = T) %>% 
+        filter(`2019_Elec- Commercial_avg` >= `2020_Elec- Commercial_avg` & 
+                 !is.na(`2019_Elec- Commercial_avg`) & 
+                 !is.na(`2020_Elec- Commercial_avg`) &
+                 `2019_Elec- Commercial_avg` != 0)
+
+electricRes_avg2020 <- 
+  electric_pivot %>%
+  distinct(ZIPCODE,.keep_all = T) %>% 
+        filter(`2019_Elec- Residential_avg` < `2020_Elec- Residential_avg` & 
+                 !is.na(`2019_Elec- Residential_avg`) & 
+                 !is.na(`2020_Elec- Residential_avg`))
+
+electricRes_avg2019 <- 
+  electric_pivot %>%
+  distinct(ZIPCODE,.keep_all = T) %>% 
+        filter(`2019_Elec- Residential_avg` >= `2020_Elec- Residential_avg` & 
+                 !is.na(`2019_Elec- Residential_avg`) & 
+                 !is.na(`2020_Elec- Residential_avg`) &
+                 `2019_Elec- Residential_avg` != 0)
+
+gas_zip <- 
+  gas %>% 
+  filter(MONTH <= 3) %>% 
+  group_by(ZIPCODE,YEAR,CUSTOMERCLASS) %>% 
+    summarize(
+    SUMTHM = sum(TOTALTHM),
+    AVGTHM = mean(AVERAGETHM, na.rm = T)
+    ) %>% 
+  left_join(bay_zctas,by=c("ZIPCODE"="ZCTA5CE10"))
+
+gas_pivot_sum <- 
+  gas_zip %>%
+  cast(ZIPCODE ~ YEAR + CUSTOMERCLASS, fun.aggregate = sum, value="SUMTHM") %>% 
+  as.data.frame() %>%
+  left_join(bay_zctas,by=c("ZIPCODE"="ZCTA5CE10"))
+
+gas_pivot <- 
+  gas_zip %>%
+  cast(ZIPCODE ~ YEAR + CUSTOMERCLASS, fun.aggregate = sum, value=c("AVGTHM")) %>% 
+  as.data.frame() %>%
+  left_join(gas_pivot_sum,by=c("ZIPCODE"),suffix=c("_avg","_sum")) %>% 
+  st_as_sf(dim = "XY", sf_column_name = "geometry") %>% 
+  st_transform(crs=4326)
+
+gasComm_avg2020 <- 
+  gas_pivot %>%
+  distinct(ZIPCODE,.keep_all = T) %>% 
+        filter(`2019_Gas- Commercial_avg` < `2020_Gas- Commercial_avg` & 
+                 !is.na(`2019_Gas- Commercial_avg`) & 
+                 !is.na(`2020_Gas- Commercial_avg`))
+
+gasComm_avg2019 <- 
+  gas_pivot %>%
+  distinct(ZIPCODE,.keep_all = T) %>% 
+        filter(`2019_Gas- Commercial_avg` >= `2020_Gas- Commercial_avg` & 
+                 !is.na(`2019_Gas- Commercial_avg`) & 
+                 !is.na(`2020_Gas- Commercial_avg`) &
+                 `2019_Gas- Commercial_avg` != 0)
+
+gasRes_avg2020 <- 
+  gas_pivot %>%
+  distinct(ZIPCODE,.keep_all = T) %>% 
+        filter(`2019_Gas- Residential_avg` < `2020_Gas- Residential_avg` & 
+                 !is.na(`2019_Gas- Residential_avg`) & 
+                 !is.na(`2020_Gas- Residential_avg`))
+
+gasRes_avg2019 <- 
+  gas_pivot %>%
+  distinct(ZIPCODE,.keep_all = T) %>% 
+        filter(`2019_Gas- Residential_avg` >= `2020_Gas- Residential_avg` & 
+                 !is.na(`2019_Gas- Residential_avg`) & 
+                 !is.na(`2020_Gas- Residential_avg`) &
+                 `2019_Gas- Residential_avg` != 0)
+
+```
+
+```{r combine-data}
+
+electric_time <- 
+  electric %>% 
+  group_by(MONTH,YEAR,CUSTOMERCLASS) %>% 
+  summarize(
+    SUMKWH = sum(TOTALKWH),
+    AVGKWH = mean(AVERAGEKWH, na.rm = T)
+    )
+
+# electric_time <- 
+#   electric_time[order(electric_ResComm_time$YEAR,electric_ResComm_time$MONTH),]
+
+electric_Q1 <- 
+  electric %>% 
+  filter(MONTH <= 3) %>% 
+  group_by(YEAR,CUSTOMERCLASS) %>% 
+    summarize(
+    SUMKWH = sum(TOTALKWH),
+    AVGKWH = mean(AVERAGEKWH, na.rm = T)
+    )
+
+gas_time <- 
+  gas %>% 
+  group_by(MONTH,YEAR,CUSTOMERCLASS) %>% 
+  summarize(
+    SUMTHM = sum(TOTALTHM),
+    AVGTHM = mean(AVERAGETHM, na.rm = T)
+    )
+
+gas_Q1 <- 
+  gas %>% 
+  filter(MONTH <= 3) %>% 
+  group_by(YEAR,CUSTOMERCLASS) %>% 
+    summarize(
+    SUMKWH = sum(TOTALTHM),
+    AVGKWH = mean(AVERAGETHM, na.rm = T)
+    )
+
+```
+
+```{r plots}
+
+
+
+```
+
+```{r electric-map}
+
+# pal <- sequential_hcl("red-blue",n=3,rev=T)
+# col <- colorNumeric(pal,domain=electric_pivot$)
+
+elec <- leaflet() %>%
+    addProviderTiles(providers$CartoDB.VoyagerLabelsUnder, group = "Default") %>%
+    addTiles(urlTemplate = mapbox_sat, attribution = mapbox_satAtt, group = "Satellite") %>%
+    addPolygons(
+      data = electricComm_avg2020,
+      # color = col(spending_brand_sum$transactions),
+      color = "#5893d4",
+      weight=1,
+      popup = paste0(
+        "<strong>",
+        electricComm_avg2020$ZIPCODE,"</strong><br>2019: ",
+        electricComm_avg2020$`2019_Elec- Commercial_avg`,
+        " kWh<br>2020: ",
+        electricComm_avg2020$`2020_Elec- Commercial_avg`,
+        " kWh"),
+      labelOptions = labelOptions(
+        style = list("font-weight" = "normal", padding = "3px 8px"),
+        textsize = "15px",
+        direction = "auto"),
+      group = "avgElecComm_2020"
+      ) %>%
+    addPolygons(
+      data = electricComm_avg2019,
+      color = "#1f3c88",
+      weight=1,
+      popup = paste0(
+        "<strong>",
+        electricComm_avg2019$ZIPCODE,"</strong><br>2019: ",
+        electricComm_avg2019$`2019_Elec- Commercial_avg`,
+        " kWh<br>2020: ",
+        electricComm_avg2019$`2020_Elec- Commercial_avg`,
+        " kWh"),
+      labelOptions = labelOptions(
+        style = list("font-weight" = "normal", padding = "3px 8px"),
+        textsize = "15px",
+        direction = "auto"),
+      group = "avgElecComm_2019"
+      ) %>%
+    addPolygons(
+      data = electricRes_avg2020,
+      color = "#c1224f",
+      weight=1,
+      popup = paste0(
+        "<strong>",
+        electricRes_avg2020$ZIPCODE,"</strong><br>2019: ",
+        electricRes_avg2020$`2019_Elec- Residential_avg`,
+        " kWh<br>2020: ",
+        electricRes_avg2020$`2020_Elec- Residential_avg`,
+        " kWh"),
+      labelOptions = labelOptions(
+        style = list("font-weight" = "normal", padding = "3px 8px"),
+        textsize = "15px",
+        direction = "auto"),
+    group = "avgElecRes_2020"
+      ) %>%
+    addPolygons(
+      data = electricRes_avg2019,
+      color = "#f16f6f",
+      weight=1,
+      popup = paste0(
+        "<strong>",
+        electricRes_avg2019$ZIPCODE,"</strong><br>2019: ",
+        electricRes_avg2019$`2019_Elec- Residential_avg`,
+        " kWh<br>2020: ",
+        electricRes_avg2019$`2020_Elec- Residential_avg`,
+        " kWh"),
+      labelOptions = labelOptions(
+        style = list("font-weight" = "normal", padding = "3px 8px"),
+        textsize = "15px",
+        direction = "auto"),
+    group = "avgElecRes_2019"
+      ) %>%
+    # addLegend(
+    #   position = 'bottomleft',
+    #   values = spending_brand_sum$transactions,
+    #   pal = col,
+    #   title='Number of Transactions'
+    #   ) %>%
+    addLayersControl(
+      baseGroups = c("Default","Satellite"),
+      overlayGroups = c("avgElecRes_2020","avgElecComm_2020","avgElecRes_2019","avgElecComm_2019")
+    ) %>%
+  hideGroup(c("avgElecComm_2020","avgElecRes_2019"))
+
+elec
+
+```
+
+```{r gas-map}
+gs <- leaflet() %>%
+    addProviderTiles(providers$CartoDB.VoyagerLabelsUnder, group = "Default") %>%
+    addTiles(urlTemplate = mapbox_sat, attribution = mapbox_satAtt, group = "Satellite") %>%
+    addPolygons(
+      data = gasComm_avg2020,
+      color = "#5893d4",
+      weight=1,
+      popup = paste0(
+        "<strong>",
+        gasComm_avg2020$ZIPCODE,"</strong><br>2019: ",
+        gasComm_avg2020$`2019_Gas- Commercial_avg`,
+        " THM<br>2020: ",
+        gasComm_avg2020$`2020_Gas- Commercial_avg`,
+        " THM"),
+      labelOptions = labelOptions(
+        style = list("font-weight" = "normal", padding = "3px 8px"),
+        textsize = "15px",
+        direction = "auto"),
+      group = "avgGasComm_2020"
+      ) %>%
+    addPolygons(
+      data = gasComm_avg2019,
+      # color = col(spending_brand_sum$transactions),
+      color = "#1f3c88",
+      weight=1,
+      popup = paste0(
+        "<strong>",
+        gasComm_avg2019$ZIPCODE,"</strong><br>2019: ",
+        gasComm_avg2019$`2019_Gas- Commercial_avg`,
+        " THM<br>2020: ",
+        gasComm_avg2019$`2020_Gas- Commercial_avg`,
+        " THM"),
+      labelOptions = labelOptions(
+        style = list("font-weight" = "normal", padding = "3px 8px"),
+        textsize = "15px",
+        direction = "auto"),
+      group = "avgGasComm_2019"
+      ) %>%
+    addPolygons(
+      data = gasRes_avg2020,
+      color = "#c1224f",
+      weight=1,
+      popup = paste0(
+        "<strong>",
+        gasRes_avg2020$ZIPCODE,"</strong><br>2019: ",
+        gasRes_avg2020$`2019_Gas- Residential_avg`,
+        " THM<br>2020: ",
+        gasRes_avg2020$`2020_Gas- Residential_avg`,
+        " THM"),
+      labelOptions = labelOptions(
+        style = list("font-weight" = "normal", padding = "3px 8px"),
+        textsize = "15px",
+        direction = "auto"),
+    group = "avgGasRes_2020"
+      ) %>%
+    addPolygons(
+      data = gasRes_avg2019,
+      color = "#f16f6f",
+      weight=1,
+      popup = paste0(
+        "<strong>",
+        gasRes_avg2019$ZIPCODE,"</strong><br>2019: ",
+        gasRes_avg2019$`2019_Gas- Residential_avg`,
+        " THM<br>2020: ",
+        gasRes_avg2019$`2020_Gas- Residential_avg`,
+        " THM"),
+      labelOptions = labelOptions(
+        style = list("font-weight" = "normal", padding = "3px 8px"),
+        textsize = "15px",
+        direction = "auto"),
+    group = "avgGasRes_2019"
+      ) %>%
+    # addLegend(
+    #   position = 'bottomleft',
+    #   values = spending_brand_sum$transactions,
+    #   pal = col,
+    #   title='Number of Transactions'
+    #   ) %>%
+    addLayersControl(
+      baseGroups = c("Default","Satellite"),
+      overlayGroups = c("avgGasRes_2020","avgGasComm_2020","avgGasRes_2019","avgGasComm_2019")
+    ) %>%
+  hideGroup(c("avgGasComm_2020","avgGasRes_2019"))
+
+gs
+
+```
+
+
