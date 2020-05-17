@@ -1,9 +1,20 @@
 ---
 title: "Commercial vs. Residential Energy Use Impacts due to COVID-19"
-output: html_document
-editor_options: 
+author: "Samantha Liu"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: false
+    code_folding: hide
+editor_options:
   chunk_output_type: console
 ---
+
+```{r include=FALSE} 
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE,fig.align = "center")
+library(knitr)
+```
 
 ```{r setup-libraries}
 library(knitr)
@@ -13,8 +24,9 @@ library(leaflet)
 library(sf)
 library(reshape)
 library(htmltools)
+library(ggplot2)
 
-setwd("P:/Stanford/Classes/MSE243 - Energy and Environmental Policy Analysis/PGE_analysis")
+setwd("C:/Users/liusa/github/wfh-covid-analysis/PGE_analysis")
 
 mapbox_sat <- "https://api.mapbox.com/styles/v1/samanyl/ck9hpl0sm0fuq1ip8yfb2yrn8/tiles/256/{z}/{x}/{y}@2x?access_token=pk.eyJ1Ijoic2FtYW55bCIsImEiOiJjazlocGNvYWgxMHhxM2Rud2pxdzVnMnp2In0.D_j3K9tXiEddHH-8UUkeZQ"
 mapbox_satAtt <- "© <a href='https://www.mapbox.com/map-feedback/'>Mapbox</a> Satellite Map"
@@ -22,160 +34,185 @@ mapbox_satAtt <- "© <a href='https://www.mapbox.com/map-feedback/'>Mapbox</a> S
 
 ```{r setup-data}
 # filter based on data values != na or 0
+# 
+# combining <- function(pattern) {
+#   files <- list.files(pattern = pattern)
+#   return(do.call(rbind, lapply(files,read_csv)))
+# }
+# 
+# electric <- 
+#   combining("PGE_20[1-2][0-9]_Q[1-4]_ElectricUsageByZip.csv") %>% 
+#   filter(CUSTOMERCLASS == c("Elec- Residential","Elec- Commercial")) 
+# 
+# electric$ZIPCODE = as.character(electric$ZIPCODE)
+# 
+# gas <- 
+#   combining("PGE_20[1-2][0-9]_Q[1-4]_GasUsageByZip.csv") %>% 
+#   filter(CUSTOMERCLASS == c("Gas- Residential","Gas- Commercial")) 
+# 
+# gas$ZIPCODE = as.character(gas$ZIPCODE)
+# 
+# write.csv(electric,"electric.csv",row.names=F)
+# write.csv(gas,"gas.csv",row.names=F)
 
-combining <- function(pattern) {
-  files <- list.files(pattern = pattern)
-  return(do.call(rbind, lapply(files,read_csv)))
-}
+electric <- read.csv("electric.csv")
+gas <- read.csv("gas.csv")
 
-electric <- 
-  combining("PGE_20[1-2][0-9]_Q[1-4]_ElectricUsageByZip.csv") %>% 
-  filter(CUSTOMERCLASS == c("Elec- Residential","Elec- Commercial")) 
+# bay_zctas <- readRDS("P:/Stanford/Classes/CEE218Z - Shaping the Future of the Bay/bay_zctas.rds")
 
-electric$ZIPCODE = as.character(electric$ZIPCODE)
 
-gas <- 
-  combining("PGE_20[1-2][0-9]_Q[1-4]_GasUsageByZip.csv") %>% 
-  filter(CUSTOMERCLASS == c("Gas- Residential","Gas- Commercial")) 
 
-gas$ZIPCODE = as.character(gas$ZIPCODE)
-
-bay_zctas <- readRDS("P:/Stanford/Classes/CEE218Z - Shaping the Future of the Bay/bay_zctas.rds")
 ```
 
 ```{r map-data}
 
 # only analyzed between January through March of 2019 and 2020
-electric_zip <- 
-  electric %>% 
-  filter(MONTH <= 3) %>% 
-  group_by(ZIPCODE,YEAR,CUSTOMERCLASS) %>% 
-    summarize(
-    SUMKWH = sum(TOTALKWH),
-    AVGKWH = mean(AVERAGEKWH, na.rm = T)
-    )
+# electric_zip <- 
+#   electric %>% 
+#   filter(MONTH <= 3) %>% 
+#   group_by(ZIPCODE,YEAR,CUSTOMERCLASS) %>% 
+#     summarize(
+#     SUMKWH = sum(TOTALKWH),
+#     AVGKWH = mean(AVERAGEKWH, na.rm = T)
+#     )
+# 
+# electric_pivot_sum <- 
+#   electric_zip %>%
+#   cast(ZIPCODE ~ YEAR + CUSTOMERCLASS, fun.aggregate = sum, value="SUMKWH") %>% 
+#   as.data.frame() %>%
+#   left_join(bay_zctas,by=c("ZIPCODE"="ZCTA5CE10"))
+# 
+# electric_pivot <- 
+#   electric_zip %>%
+#   cast(ZIPCODE ~ YEAR + CUSTOMERCLASS, fun.aggregate = mean, value=c("AVGKWH")) %>% 
+#   as.data.frame() %>% 
+#   left_join(electric_pivot_sum,by=c("ZIPCODE"),suffix=c("_avg","_sum")) %>% 
+#   st_as_sf(dim = "XY", sf_column_name = "geometry") %>% 
+#   st_transform(crs=4326)
+# 
+# electricComm_avg2020 <- 
+#   electric_pivot %>%
+#   distinct(ZIPCODE,.keep_all = T) %>% 
+#         filter(`2019_Elec- Commercial_avg` < `2020_Elec- Commercial_avg` & 
+#                  !is.na(`2019_Elec- Commercial_avg`) & 
+#                  !is.na(`2020_Elec- Commercial_avg`))
+# 
+# electricComm_avg2019 <- 
+#   electric_pivot %>%
+#   distinct(ZIPCODE,.keep_all = T) %>% 
+#         filter(`2019_Elec- Commercial_avg` >= `2020_Elec- Commercial_avg` & 
+#                  !is.na(`2019_Elec- Commercial_avg`) & 
+#                  !is.na(`2020_Elec- Commercial_avg`) &
+#                  `2019_Elec- Commercial_avg` != 0)
+# 
+# electricRes_avg2020 <- 
+#   electric_pivot %>%
+#   distinct(ZIPCODE,.keep_all = T) %>% 
+#         filter(`2019_Elec- Residential_avg` < `2020_Elec- Residential_avg` & 
+#                  !is.na(`2019_Elec- Residential_avg`) & 
+#                  !is.na(`2020_Elec- Residential_avg`))
+# 
+# electricRes_avg2019 <- 
+#   electric_pivot %>%
+#   distinct(ZIPCODE,.keep_all = T) %>% 
+#         filter(`2019_Elec- Residential_avg` >= `2020_Elec- Residential_avg` & 
+#                  !is.na(`2019_Elec- Residential_avg`) & 
+#                  !is.na(`2020_Elec- Residential_avg`) &
+#                  `2019_Elec- Residential_avg` != 0)
+# 
+# saveRDS(electricComm_avg2020,"electricComm_avg2020.rds")
+# saveRDS(electricComm_avg2019,"electricComm_avg2019.rds")
+# saveRDS(electricRes_avg2020,"electricRes_avg2020.rds")
+# saveRDS(electricRes_avg2019,"electricRes_avg2019.rds")
 
-electric_pivot_sum <- 
-  electric_zip %>%
-  cast(ZIPCODE ~ YEAR + CUSTOMERCLASS, fun.aggregate = sum, value="SUMKWH") %>% 
-  as.data.frame() %>%
-  left_join(bay_zctas,by=c("ZIPCODE"="ZCTA5CE10"))
+electricComm_avg2020 <- readRDS("electricComm_avg2020.rds")
+electricComm_avg2019 <- readRDS("electricComm_avg2019.rds")
+electricRes_avg2020 <- readRDS("electricRes_avg2020.rds")
+electricRes_avg2019 <- readRDS("electricRes_avg2019.rds")
 
-electric_pivot <- 
-  electric_zip %>%
-  cast(ZIPCODE ~ YEAR + CUSTOMERCLASS, fun.aggregate = mean, value=c("AVGKWH")) %>% 
-  as.data.frame() %>% 
-  left_join(electric_pivot_sum,by=c("ZIPCODE"),suffix=c("_avg","_sum")) %>% 
-  st_as_sf(dim = "XY", sf_column_name = "geometry") %>% 
-  st_transform(crs=4326)
+# gas_zip <- 
+#   gas %>% 
+#   filter(MONTH <= 3) %>% 
+#   group_by(ZIPCODE,YEAR,CUSTOMERCLASS) %>% 
+#     summarize(
+#     SUMTHM = sum(TOTALTHM),
+#     AVGTHM = mean(AVERAGETHM, na.rm = T)
+#     ) %>% 
+#   left_join(bay_zctas,by=c("ZIPCODE"="ZCTA5CE10"))
+# 
+# gas_pivot_sum <- 
+#   gas_zip %>%
+#   cast(ZIPCODE ~ YEAR + CUSTOMERCLASS, fun.aggregate = sum, value="SUMTHM") %>% 
+#   as.data.frame() %>%
+#   left_join(bay_zctas,by=c("ZIPCODE"="ZCTA5CE10"))
+# 
+# gas_pivot <- 
+#   gas_zip %>%
+#   cast(ZIPCODE ~ YEAR + CUSTOMERCLASS, fun.aggregate = sum, value=c("AVGTHM")) %>% 
+#   as.data.frame() %>%
+#   left_join(gas_pivot_sum,by=c("ZIPCODE"),suffix=c("_avg","_sum")) %>% 
+#   st_as_sf(dim = "XY", sf_column_name = "geometry") %>% 
+#   st_transform(crs=4326)
+# 
+# gasComm_avg2020 <- 
+#   gas_pivot %>%
+#   distinct(ZIPCODE,.keep_all = T) %>% 
+#         filter(`2019_Gas- Commercial_avg` < `2020_Gas- Commercial_avg` & 
+#                  !is.na(`2019_Gas- Commercial_avg`) & 
+#                  !is.na(`2020_Gas- Commercial_avg`))
+# 
+# gasComm_avg2019 <- 
+#   gas_pivot %>%
+#   distinct(ZIPCODE,.keep_all = T) %>% 
+#         filter(`2019_Gas- Commercial_avg` >= `2020_Gas- Commercial_avg` & 
+#                  !is.na(`2019_Gas- Commercial_avg`) & 
+#                  !is.na(`2020_Gas- Commercial_avg`) &
+#                  `2019_Gas- Commercial_avg` != 0)
+# 
+# gasRes_avg2020 <- 
+#   gas_pivot %>%
+#   distinct(ZIPCODE,.keep_all = T) %>% 
+#         filter(`2019_Gas- Residential_avg` < `2020_Gas- Residential_avg` & 
+#                  !is.na(`2019_Gas- Residential_avg`) & 
+#                  !is.na(`2020_Gas- Residential_avg`))
+# 
+# gasRes_avg2019 <- 
+#   gas_pivot %>%
+#   distinct(ZIPCODE,.keep_all = T) %>% 
+#         filter(`2019_Gas- Residential_avg` >= `2020_Gas- Residential_avg` & 
+#                  !is.na(`2019_Gas- Residential_avg`) & 
+#                  !is.na(`2020_Gas- Residential_avg`) &
+#                  `2019_Gas- Residential_avg` != 0)
+# 
+# saveRDS(gasComm_avg2020,"gasComm_avg2020.rds")
+# saveRDS(gasComm_avg2019,"gasComm_avg2019.rds")
+# saveRDS(gasRes_avg2020,"gasRes_avg2020.rds")
+# saveRDS(gasRes_avg2019,"gasRes_avg2019.rds")
 
-electricComm_avg2020 <- 
-  electric_pivot %>%
-  distinct(ZIPCODE,.keep_all = T) %>% 
-        filter(`2019_Elec- Commercial_avg` < `2020_Elec- Commercial_avg` & 
-                 !is.na(`2019_Elec- Commercial_avg`) & 
-                 !is.na(`2020_Elec- Commercial_avg`))
-
-electricComm_avg2019 <- 
-  electric_pivot %>%
-  distinct(ZIPCODE,.keep_all = T) %>% 
-        filter(`2019_Elec- Commercial_avg` >= `2020_Elec- Commercial_avg` & 
-                 !is.na(`2019_Elec- Commercial_avg`) & 
-                 !is.na(`2020_Elec- Commercial_avg`) &
-                 `2019_Elec- Commercial_avg` != 0)
-
-electricRes_avg2020 <- 
-  electric_pivot %>%
-  distinct(ZIPCODE,.keep_all = T) %>% 
-        filter(`2019_Elec- Residential_avg` < `2020_Elec- Residential_avg` & 
-                 !is.na(`2019_Elec- Residential_avg`) & 
-                 !is.na(`2020_Elec- Residential_avg`))
-
-electricRes_avg2019 <- 
-  electric_pivot %>%
-  distinct(ZIPCODE,.keep_all = T) %>% 
-        filter(`2019_Elec- Residential_avg` >= `2020_Elec- Residential_avg` & 
-                 !is.na(`2019_Elec- Residential_avg`) & 
-                 !is.na(`2020_Elec- Residential_avg`) &
-                 `2019_Elec- Residential_avg` != 0)
-
-gas_zip <- 
-  gas %>% 
-  filter(MONTH <= 3) %>% 
-  group_by(ZIPCODE,YEAR,CUSTOMERCLASS) %>% 
-    summarize(
-    SUMTHM = sum(TOTALTHM),
-    AVGTHM = mean(AVERAGETHM, na.rm = T)
-    ) %>% 
-  left_join(bay_zctas,by=c("ZIPCODE"="ZCTA5CE10"))
-
-gas_pivot_sum <- 
-  gas_zip %>%
-  cast(ZIPCODE ~ YEAR + CUSTOMERCLASS, fun.aggregate = sum, value="SUMTHM") %>% 
-  as.data.frame() %>%
-  left_join(bay_zctas,by=c("ZIPCODE"="ZCTA5CE10"))
-
-gas_pivot <- 
-  gas_zip %>%
-  cast(ZIPCODE ~ YEAR + CUSTOMERCLASS, fun.aggregate = sum, value=c("AVGTHM")) %>% 
-  as.data.frame() %>%
-  left_join(gas_pivot_sum,by=c("ZIPCODE"),suffix=c("_avg","_sum")) %>% 
-  st_as_sf(dim = "XY", sf_column_name = "geometry") %>% 
-  st_transform(crs=4326)
-
-gasComm_avg2020 <- 
-  gas_pivot %>%
-  distinct(ZIPCODE,.keep_all = T) %>% 
-        filter(`2019_Gas- Commercial_avg` < `2020_Gas- Commercial_avg` & 
-                 !is.na(`2019_Gas- Commercial_avg`) & 
-                 !is.na(`2020_Gas- Commercial_avg`))
-
-gasComm_avg2019 <- 
-  gas_pivot %>%
-  distinct(ZIPCODE,.keep_all = T) %>% 
-        filter(`2019_Gas- Commercial_avg` >= `2020_Gas- Commercial_avg` & 
-                 !is.na(`2019_Gas- Commercial_avg`) & 
-                 !is.na(`2020_Gas- Commercial_avg`) &
-                 `2019_Gas- Commercial_avg` != 0)
-
-gasRes_avg2020 <- 
-  gas_pivot %>%
-  distinct(ZIPCODE,.keep_all = T) %>% 
-        filter(`2019_Gas- Residential_avg` < `2020_Gas- Residential_avg` & 
-                 !is.na(`2019_Gas- Residential_avg`) & 
-                 !is.na(`2020_Gas- Residential_avg`))
-
-gasRes_avg2019 <- 
-  gas_pivot %>%
-  distinct(ZIPCODE,.keep_all = T) %>% 
-        filter(`2019_Gas- Residential_avg` >= `2020_Gas- Residential_avg` & 
-                 !is.na(`2019_Gas- Residential_avg`) & 
-                 !is.na(`2020_Gas- Residential_avg`) &
-                 `2019_Gas- Residential_avg` != 0)
+gasComm_avg2020 <- readRDS("gasComm_avg2020.rds")
+gasComm_avg2019 <- readRDS("gasComm_avg2019.rds")
+gasRes_avg2020 <- readRDS("gasRes_avg2020.rds")
+gasRes_avg2019 <- readRDS("gasRes_avg2019.rds")
 
 ```
 
-```{r combine-data}
+```{r plot-data}
 
-electric_time <- 
-  electric %>% 
-  group_by(MONTH,YEAR,CUSTOMERCLASS) %>% 
+electric_time <-
+  electric %>%
+  group_by(MONTH,YEAR,CUSTOMERCLASS) %>%
   summarize(
     SUMKWH = sum(TOTALKWH),
     AVGKWH = mean(AVERAGEKWH, na.rm = T)
     )
-
 # electric_time <- 
 #   electric_time[order(electric_ResComm_time$YEAR,electric_ResComm_time$MONTH),]
 
 electric_Q1 <- 
-  electric %>% 
+  electric_time %>% 
   filter(MONTH <= 3) %>% 
-  group_by(YEAR,CUSTOMERCLASS) %>% 
-    summarize(
-    SUMKWH = sum(TOTALKWH),
-    AVGKWH = mean(AVERAGEKWH, na.rm = T)
-    )
+  unite("YEAR_CUSTOMERCLASS",c(YEAR,CUSTOMERCLASS),sep="_")
+
 
 gas_time <- 
   gas %>% 
@@ -186,19 +223,50 @@ gas_time <-
     )
 
 gas_Q1 <- 
-  gas %>% 
+  gas_time %>% 
   filter(MONTH <= 3) %>% 
-  group_by(YEAR,CUSTOMERCLASS) %>% 
-    summarize(
-    SUMKWH = sum(TOTALTHM),
-    AVGKWH = mean(AVERAGETHM, na.rm = T)
-    )
+  unite("YEAR_CUSTOMERCLASS",c(YEAR,CUSTOMERCLASS),sep="_")
 
 ```
 
 ```{r plots}
 
+eplt <- 
+  ggplot(electric_Q1,aes(x=MONTH,y=SUMKWH,fill=YEAR_CUSTOMERCLASS)) +
+  scale_fill_manual(values=c("#b2dffb","#fbc1bc","#4f98ca","#e58a8a")) +
+  geom_bar(stat="identity",position=position_dodge()) +
+  ggtitle("2019 vs 2020 Total Electric Usage in the Bay Area") +
+  theme_minimal()
 
+eplt
+
+eplt2 <- 
+  ggplot(electric_Q1,aes(x=MONTH,y=AVGKWH,fill=YEAR_CUSTOMERCLASS)) +
+  scale_fill_manual(values=c("#b2dffb","#fbc1bc","#4f98ca","#e58a8a")) +
+  geom_bar(stat="identity",position=position_dodge()) +
+  ggtitle("2019 vs 2020 Average Electric Usage in the Bay Area") +
+  theme_minimal()
+
+eplt2
+
+
+gplt <- 
+  ggplot(gas_Q1,aes(x=MONTH,y=SUMTHM,fill=YEAR_CUSTOMERCLASS)) +
+  scale_fill_manual(values=c("#b2dffb","#fbc1bc","#4f98ca","#e58a8a")) +
+  geom_bar(stat="identity",position=position_dodge()) +
+  ggtitle("2019 vs 2020 Total Gas Usage in the Bay Area") +
+  theme_minimal()
+
+gplt
+
+gplt2 <- 
+  ggplot(gas_Q1,aes(x=MONTH,y=AVGTHM,fill=YEAR_CUSTOMERCLASS)) +
+  scale_fill_manual(values=c("#b2dffb","#fbc1bc","#4f98ca","#e58a8a")) +
+  geom_bar(stat="identity",position=position_dodge()) +
+  ggtitle("2019 vs 2020 Average Gas Usage in the Bay Area") +
+  theme_minimal()
+
+gplt2
 
 ```
 
