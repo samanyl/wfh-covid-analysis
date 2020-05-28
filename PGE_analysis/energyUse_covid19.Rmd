@@ -11,13 +11,13 @@ editor_options:
   chunk_output_type: console
 ---
 
-```{r include=FALSE} 
-knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE,fig.align = "center")
+## Initial Set-up
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
 library(knitr)
 ```
 
 ```{r setup-libraries}
-library(knitr)
 library(shinydashboard)
 library(tidyverse)
 library(leaflet)
@@ -25,14 +25,75 @@ library(sf)
 library(reshape)
 library(htmltools)
 library(ggplot2)
+library(grid)
+library(formattable)
 
-setwd("C:/Users/liusa/github/wfh-covid-analysis/PGE_analysis")
+setwd("C:/Users/liusa/github/samanyl/wfh-covid-analysis/PGE_analysis")
 
 mapbox_sat <- "https://api.mapbox.com/styles/v1/samanyl/ck9hpl0sm0fuq1ip8yfb2yrn8/tiles/256/{z}/{x}/{y}@2x?access_token=pk.eyJ1Ijoic2FtYW55bCIsImEiOiJjazlocGNvYWgxMHhxM2Rud2pxdzVnMnp2In0.D_j3K9tXiEddHH-8UUkeZQ"
 mapbox_satAtt <- "© <a href='https://www.mapbox.com/map-feedback/'>Mapbox</a> Satellite Map"
+
+bay_county_names <-
+  c(
+    "Alameda",
+    "Contra Costa",
+    "Marin",
+    "Napa",
+    "San Francisco",
+    "San Mateo",
+    "Santa Clara",
+    "Solano",
+    "Sonoma"
+  )
+
+github_rds <- "https://github.com/stanfordfuturebay/stanfordfuturebay.github.io/blob/master/data/"
+bay_counties <- readRDS(gzcon(url(paste0(github_rds,"bay_counties.rds?raw=true")))) %>% 
+  arrange(NAME)
+
+# ca_zipcodes <- read.csv("C:/Users/liusa/github/covid19/snap project/sam/ca_zipcodes_city_county.csv")
+# ca_zipcodes$ZIP <- as.character(ca_zipcodes$ZIP)
+# ca_zipcodes %>% filter(COUNTY %in% bay_county_names) %>% saveRDS("C:/Users/liusa/github/covid19/snap project/sam/bayarea_zipcodes.rds")
+
+bayarea_zipcodes <- readRDS("C:/Users/liusa/github/covid19/snap project/sam/bayarea_zipcodes.rds")
+
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
 ```
 
-```{r setup-data}
+```{r setup-pge-data}
 # filter based on data values != na or 0
 # 
 # combining <- function(pattern) {
@@ -40,31 +101,30 @@ mapbox_satAtt <- "© <a href='https://www.mapbox.com/map-feedback/'>Mapbox</a> S
 #   return(do.call(rbind, lapply(files,read_csv)))
 # }
 # 
-# electric <- 
-#   combining("PGE_20[1-2][0-9]_Q[1-4]_ElectricUsageByZip.csv") %>% 
-#   filter(CUSTOMERCLASS == c("Elec- Residential","Elec- Commercial")) 
+# electric <-
+#   combining("PGE_20[1-2][0-9]_Q[1-4]_ElectricUsageByZip.csv") %>%
+#   filter(CUSTOMERCLASS %in% c("Elec- Residential","Elec- Commercial","Elec- Industrial"))
 # 
 # electric$ZIPCODE = as.character(electric$ZIPCODE)
 # 
-# gas <- 
-#   combining("PGE_20[1-2][0-9]_Q[1-4]_GasUsageByZip.csv") %>% 
-#   filter(CUSTOMERCLASS == c("Gas- Residential","Gas- Commercial")) 
+# gas <-
+#   combining("PGE_20[1-2][0-9]_Q[1-4]_GasUsageByZip.csv") %>%
+#   filter(CUSTOMERCLASS %in% c("Gas- Residential","Gas- Commercial"))
 # 
 # gas$ZIPCODE = as.character(gas$ZIPCODE)
 # 
-# write.csv(electric,"electric.csv",row.names=F)
-# write.csv(gas,"gas.csv",row.names=F)
-
-electric <- read.csv("electric.csv")
-gas <- read.csv("gas.csv")
-
+# saveRDS(electric,"electric.rds")
+# saveRDS(gas,"gas.rds")
+# 
 # bay_zctas <- readRDS("P:/Stanford/Classes/CEE218Z - Shaping the Future of the Bay/bay_zctas.rds")
 
-
+electric <- readRDS("electric.rds")
+gas <- readRDS("gas.rds")
 
 ```
 
-```{r map-data}
+## Pre-Analysis (Maps)
+```{r map-data, eval=FALSE}
 
 # only analyzed between January through March of 2019 and 2020
 # electric_zip <- 
@@ -196,81 +256,7 @@ gasRes_avg2019 <- readRDS("gasRes_avg2019.rds")
 
 ```
 
-```{r plot-data}
-
-electric_time <-
-  electric %>%
-  group_by(MONTH,YEAR,CUSTOMERCLASS) %>%
-  summarize(
-    SUMKWH = sum(TOTALKWH),
-    AVGKWH = mean(AVERAGEKWH, na.rm = T)
-    )
-# electric_time <- 
-#   electric_time[order(electric_ResComm_time$YEAR,electric_ResComm_time$MONTH),]
-
-electric_Q1 <- 
-  electric_time %>% 
-  filter(MONTH <= 3) %>% 
-  unite("YEAR_CUSTOMERCLASS",c(YEAR,CUSTOMERCLASS),sep="_")
-
-
-gas_time <- 
-  gas %>% 
-  group_by(MONTH,YEAR,CUSTOMERCLASS) %>% 
-  summarize(
-    SUMTHM = sum(TOTALTHM),
-    AVGTHM = mean(AVERAGETHM, na.rm = T)
-    )
-
-gas_Q1 <- 
-  gas_time %>% 
-  filter(MONTH <= 3) %>% 
-  unite("YEAR_CUSTOMERCLASS",c(YEAR,CUSTOMERCLASS),sep="_")
-
-```
-
-```{r plots}
-
-eplt <- 
-  ggplot(electric_Q1,aes(x=MONTH,y=SUMKWH,fill=YEAR_CUSTOMERCLASS)) +
-  scale_fill_manual(values=c("#b2dffb","#fbc1bc","#4f98ca","#e58a8a")) +
-  geom_bar(stat="identity",position=position_dodge()) +
-  ggtitle("2019 vs 2020 Total Electric Usage in the Bay Area") +
-  theme_minimal()
-
-eplt
-
-eplt2 <- 
-  ggplot(electric_Q1,aes(x=MONTH,y=AVGKWH,fill=YEAR_CUSTOMERCLASS)) +
-  scale_fill_manual(values=c("#b2dffb","#fbc1bc","#4f98ca","#e58a8a")) +
-  geom_bar(stat="identity",position=position_dodge()) +
-  ggtitle("2019 vs 2020 Average Electric Usage in the Bay Area") +
-  theme_minimal()
-
-eplt2
-
-
-gplt <- 
-  ggplot(gas_Q1,aes(x=MONTH,y=SUMTHM,fill=YEAR_CUSTOMERCLASS)) +
-  scale_fill_manual(values=c("#b2dffb","#fbc1bc","#4f98ca","#e58a8a")) +
-  geom_bar(stat="identity",position=position_dodge()) +
-  ggtitle("2019 vs 2020 Total Gas Usage in the Bay Area") +
-  theme_minimal()
-
-gplt
-
-gplt2 <- 
-  ggplot(gas_Q1,aes(x=MONTH,y=AVGTHM,fill=YEAR_CUSTOMERCLASS)) +
-  scale_fill_manual(values=c("#b2dffb","#fbc1bc","#4f98ca","#e58a8a")) +
-  geom_bar(stat="identity",position=position_dodge()) +
-  ggtitle("2019 vs 2020 Average Gas Usage in the Bay Area") +
-  theme_minimal()
-
-gplt2
-
-```
-
-```{r electric-map}
+```{r electric-map, eval=FALSE}
 
 # pal <- sequential_hcl("red-blue",n=3,rev=T)
 # col <- colorNumeric(pal,domain=electric_pivot$)
@@ -363,7 +349,7 @@ elec
 
 ```
 
-```{r gas-map}
+```{r gas-map, eval=FALSE}
 gs <- leaflet() %>%
     addProviderTiles(providers$CartoDB.VoyagerLabelsUnder, group = "Default") %>%
     addTiles(urlTemplate = mapbox_sat, attribution = mapbox_satAtt, group = "Satellite") %>%
@@ -451,5 +437,284 @@ gs <- leaflet() %>%
 gs
 
 ```
+
+## 2019-2020 Energy Reductions in Usage and Costs (PG&E Electric Data)
+```{r plot-comm-res-ind}
+
+electric_Q1_comm <- 
+  electric %>%
+  filter(MONTH <= 3 & CUSTOMERCLASS == "Elec- Commercial") %>%   
+  group_by(MONTH,YEAR,CUSTOMERCLASS) %>%
+  summarize(
+    SUMKWH = sum(TOTALKWH),
+    AVGKWH = mean(AVERAGEKWH, na.rm = T)
+    )
+
+electric_Q1_comm_plt <- 
+  ggplot(electric_Q1_comm, aes(x=MONTH, y=SUMKWH/1000000, fill=as.character(YEAR), group=YEAR)) +
+  geom_bar(stat="identity", position="dodge") +
+  scale_fill_manual(values=c("#8ed6ff","#5893d4")) +
+  labs(title="Commercial Spaces", x="Month", y="Total GWh Demand", fill="Year") +
+  theme_minimal()+
+  theme(legend.position = "top")
+
+electric_Q1_ind <- 
+  electric %>%
+  filter(MONTH <= 3 & CUSTOMERCLASS == "Elec- Industrial") %>%  
+  group_by(MONTH,YEAR,CUSTOMERCLASS) %>%
+  summarize(
+    SUMKWH = sum(TOTALKWH),
+    AVGKWH = mean(AVERAGEKWH, na.rm = T)
+    )
+
+electric_Q1_ind_plt <- 
+  ggplot(electric_Q1_ind, aes(x=MONTH, y=SUMKWH/1000000, fill=as.character(YEAR), group=YEAR)) +
+  geom_bar(stat="identity", position="dodge") +
+  scale_fill_manual(values=c("#ffe79a","#ffa952")) +
+  labs(title="Industrial Spaces", x="Month", y="Total GWh Demand", fill="Year") +
+  theme_minimal()+
+  theme(legend.position = "top")
+
+electric_Q1_res <- 
+  electric %>%
+  filter(MONTH <= 3 & CUSTOMERCLASS == "Elec- Residential") %>%  
+  group_by(MONTH,YEAR,CUSTOMERCLASS) %>%
+  summarize(
+    SUMKWH = sum(TOTALKWH),
+    AVGKWH = mean(AVERAGEKWH, na.rm = T)
+    )
+
+electric_Q1_res_plt <- 
+  ggplot(electric_Q1_res, aes(x=MONTH, y=SUMKWH/1000000, fill=as.character(YEAR), group=YEAR)) +
+  geom_bar(stat="identity", position="dodge") +
+  scale_fill_manual(values=c("#ffaaaa","#c7004c")) +
+  labs(title="Residential Spaces", x="Month", y="Total GWh Demand", fill="Year") +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+multiplot(electric_Q1_comm_plt, electric_Q1_ind_plt, electric_Q1_res_plt, cols=3)
+
+```
+
+```{r plots-differences-in-years}
+
+electric_difference <- 
+  electric %>% 
+  filter(MONTH <= 3) %>%  
+  group_by(MONTH,YEAR,CUSTOMERCLASS) %>%
+  summarize(
+    SUMKWH = sum(TOTALKWH)
+    ) %>% 
+  spread(YEAR, SUMKWH) %>% 
+  mutate("DIFF" = (`2020` - `2019`))
+
+electric_change_plt <- 
+  ggplot(electric_difference, aes(x=MONTH,y=DIFF/`2019`,color=CUSTOMERCLASS,group=CUSTOMERCLASS)) +
+  geom_line(size=1) +
+  geom_point(size=1.5) +
+  scale_x_continuous(breaks = seq(1, 3, by = 1)) +
+  labs(title="Relative Change in Energy Consumption", x="Month", y="% Change", color="Customer Type") +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values=c("#5893d4", "#ffa952", "#c7004c"), 
+                    labels=c("Commercial", "Industrial", "Residential")) +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+electric_change_plt
+
+```
+
+```{r net-energy-costs-reduction}
+
+electric_difference_costs <- read.csv("electric_difference_costs.csv")
+electric_difference_costs$DIFF <- electric_difference_costs$DIFF * -1
+
+electric_tbl <- 
+  electric_difference_costs %>% 
+  dplyr::select(MONTH, CUSTOMERCLASS, DIFF) %>% 
+  spread(MONTH,DIFF) %>% 
+  dplyr::rename("JANUARY"="1","FEBRUARY"="2", "MARCH"="3","CUSTOMER CLASS"="CUSTOMERCLASS") %>%
+  formattable(align = c(rep("c")), 
+              list(
+              JANUARY = formatter("span",
+                                        style = x ~ style(
+                                          font.weight="bold",
+                                          color = ifelse(x > 0, "#5b8c5a", ifelse(x < 0, "#fd5e53", "black"))
+                                          )
+                                        ),
+              FEBRUARY = formatter("span",
+                                        style = x ~ style(
+                                          font.weight="bold",
+                                          color = ifelse(x > 0, "#5b8c5a", ifelse(x < 0, "#fd5e53", "black"))
+                                          )
+                                        ),
+              MARCH = formatter("span",
+                                        style = x ~ style(
+                                          font.weight="bold",
+                                          color = ifelse(x > 0, "#5b8c5a", ifelse(x < 0, "#fd5e53", "black"))
+                                          )
+                                        )
+              )
+  )
+  
+electric_tbl$JANUARY <- comma(electric_tbl$JANUARY,format="d")   
+electric_tbl$FEBRUARY <- comma(electric_tbl$FEBRUARY,format="d")  
+electric_tbl$MARCH <- comma(electric_tbl$MARCH,format="d")  
+  
+electric_tbl
+```
+
+## County-Level Breakdowns
+```{r energy-by-county}
+
+electric_bayarea <- 
+  bayarea_zipcodes %>% 
+  left_join(electric %>% filter(MONTH <= 3),by=c("ZIP"="ZIPCODE")) %>%
+  dplyr::select(COUNTY, MONTH, YEAR, CUSTOMERCLASS, TOTALKWH,AVERAGEKWH) %>% 
+  group_by(COUNTY, MONTH, CUSTOMERCLASS, YEAR) %>% 
+  summarise(
+    SUMKWH = sum(TOTALKWH)
+  ) %>% 
+  na.omit()
+
+# total electricity demand
+electric_bayarea_counties <- 
+  electric_bayarea %>% 
+  filter(YEAR == 2020) %>%  # filter 2019/2020 accordingly
+  group_by(COUNTY, MONTH) %>% 
+  summarise(
+    SUMKWH = sum(SUMKWH)
+  )
+
+electric_bayarea_counties_plt <- 
+  ggplot(electric_bayarea_counties, aes(x=MONTH, y=SUMKWH/1000000, fill=COUNTY, group=COUNTY)) +
+  geom_bar(stat="identity", position="dodge") +
+  labs(title="2020 Electricity Demand by County", x="Month", y="Total GWh Demand", fill="County") +
+  theme_minimal()
+
+electric_bayarea_counties_plt
+
+# commercial electricity demand
+electric_comm_counties <- 
+  electric_bayarea %>% 
+  filter(YEAR == 2020 & CUSTOMERCLASS == "Elec- Commercial") %>%  # filter 2019/2020 accordingly
+  group_by(COUNTY, MONTH) %>% 
+  summarise(
+    SUMKWH = sum(SUMKWH)
+  )
+
+electric_comm_counties_plt <- 
+  ggplot(electric_comm_counties, aes(x=MONTH, y=SUMKWH/1000000, fill=COUNTY, group=COUNTY)) +
+  geom_bar(stat="identity", position="dodge") +
+  labs(title="2020 Commercial Electricity Demand by County", x="Month", y="Total GWh Demand", fill="County") +
+  theme_minimal()+
+  theme(legend.position = "none")
+
+# industrial electricity demand
+electric_ind_counties <- 
+  electric_bayarea %>% 
+  filter(YEAR == 2020 & CUSTOMERCLASS == "Elec- Industrial") %>%  # filter 2019/2020 accordingly
+  group_by(COUNTY, MONTH) %>% 
+  summarise(
+    SUMKWH = sum(SUMKWH)
+  )
+
+electric_ind_counties_plt <- 
+  ggplot(electric_ind_counties, aes(x=MONTH, y=SUMKWH/1000000, fill=COUNTY, group=COUNTY)) +
+  geom_bar(stat="identity", position="dodge") +
+  labs(title="2020 Industrial Electricity Demand by County", x="Month", y="Total GWh Demand", fill="County") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# residential electricity demand
+electric_res_counties <- 
+  electric_bayarea %>% 
+  filter(YEAR == 2020 & CUSTOMERCLASS == "Elec- Residential") %>%  # filter 2019/2020 accordingly
+  group_by(COUNTY, MONTH) %>% 
+  summarise(
+    SUMKWH = sum(SUMKWH)
+  )
+
+electric_res_counties_plt <- 
+  ggplot(electric_res_counties, aes(x=MONTH, y=SUMKWH/1000000, fill=COUNTY, group=COUNTY)) +
+  geom_bar(stat="identity", position="dodge") +
+  labs(title="2020 Residential Electricity Demand by County", x="Month", y="Total GWh Demand", fill="County") +
+  theme_minimal()+
+  theme(legend.position = "none")
+
+multiplot(electric_comm_counties_plt,electric_ind_counties_plt,electric_res_counties_plt, cols=3)
+
+```
+
+```{r differences-by-county}
+electric_bayarea_difference <- 
+  electric_bayarea %>% 
+  group_by(COUNTY, YEAR, MONTH) %>% # need to add CUSTOMERCLASS to incorporate costs savings below
+  summarise(
+    SUMKWH = sum(SUMKWH)
+  ) %>% 
+  spread(YEAR,SUMKWH) %>% 
+  mutate("DIFF" = (`2020` - `2019`))
+
+electric_bayarea_change_plt <- 
+  ggplot(electric_bayarea_difference, aes(x=MONTH,y=DIFF/`2019`,color=COUNTY,group=COUNTY)) +
+  geom_line(size=1) +
+  geom_point(size=1.5) +
+  scale_x_continuous(breaks = seq(1, 3, by = 1)) +
+  labs(title="Relative Change in Energy Consumption by County", x="Month", y="% Change", color="County") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_minimal()
+
+electric_bayarea_change_plt
+
+```
+
+```{r cost-savings-by-county}
+
+electric_bayarea_difference_costs <- read.csv("electric_bayarea_difference_costs.csv")
+
+electric_bayarea_difference_costs$DIFF <- electric_bayarea_difference_costs$DIFF * -1
+
+electric_bayarea_tbl <- 
+  electric_bayarea_difference_costs %>% 
+  group_by(COUNTY, MONTH) %>%  
+  summarise(
+    DIFF = sum(DIFF)
+  ) %>% 
+  spread(MONTH, DIFF) %>% 
+  dplyr::rename("JANUARY"="1","FEBRUARY"="2", "MARCH"="3") %>%
+  formattable(align = c(rep("c")), 
+              list(
+              JANUARY = formatter("span",
+                                        style = x ~ style(
+                                          font.weight="bold",
+                                          color = ifelse(x > 0, "#5b8c5a", ifelse(x < 0, "#fd5e53", "black"))
+                                          )
+                                        ),
+              FEBRUARY = formatter("span",
+                                        style = x ~ style(
+                                          font.weight="bold",
+                                          color = ifelse(x > 0, "#5b8c5a", ifelse(x < 0, "#fd5e53", "black"))
+                                          )
+                                        ),
+              MARCH = formatter("span",
+                                        style = x ~ style(
+                                          font.weight="bold",
+                                          color = ifelse(x > 0, "#5b8c5a", ifelse(x < 0, "#fd5e53", "black"))
+                                          )
+                                        )
+              )
+  )
+  
+electric_bayarea_tbl$JANUARY <- comma(electric_bayarea_tbl$JANUARY,format="d")   
+electric_bayarea_tbl$FEBRUARY <- comma(electric_bayarea_tbl$FEBRUARY,format="d")  
+electric_bayarea_tbl$MARCH <- comma(electric_bayarea_tbl$MARCH,format="d")  
+  
+electric_bayarea_tbl
+
+```
+ 
+
+
 
 
