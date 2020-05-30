@@ -28,7 +28,7 @@ library(ggplot2)
 library(grid)
 library(formattable)
 
-setwd("C:/Users/liusa/github/samanyl/wfh-covid-analysis/PGE_analysis")
+setwd("C:/Users/liusa/github/wfh-covid-analysis/PGE_analysis")
 
 mapbox_sat <- "https://api.mapbox.com/styles/v1/samanyl/ck9hpl0sm0fuq1ip8yfb2yrn8/tiles/256/{z}/{x}/{y}@2x?access_token=pk.eyJ1Ijoic2FtYW55bCIsImEiOiJjazlocGNvYWgxMHhxM2Rud2pxdzVnMnp2In0.D_j3K9tXiEddHH-8UUkeZQ"
 mapbox_satAtt <- "© <a href='https://www.mapbox.com/map-feedback/'>Mapbox</a> Satellite Map"
@@ -54,7 +54,7 @@ bay_counties <- readRDS(gzcon(url(paste0(github_rds,"bay_counties.rds?raw=true")
 # ca_zipcodes$ZIP <- as.character(ca_zipcodes$ZIP)
 # ca_zipcodes %>% filter(COUNTY %in% bay_county_names) %>% saveRDS("C:/Users/liusa/github/covid19/snap project/sam/bayarea_zipcodes.rds")
 
-bayarea_zipcodes <- readRDS("C:/Users/liusa/github/covid19/snap project/sam/bayarea_zipcodes.rds")
+bayarea_zipcodes <- readRDS("C:/Users/liusa/github/covid19/Sam_Liu/bayarea_zipcodes.rds")
 
 multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
 
@@ -566,6 +566,24 @@ electric_tbl
 
 ## County-Level Breakdowns
 ```{r energy-by-county}
+
+# electric_zip <-
+#   electric %>%
+#   filter(YEAR == 2019) %>%
+#   group_by(ZIPCODE) %>%
+#   summarise(
+#     sumkwh = sum(TOTALKWH, na.rm=T)
+#   )
+# 
+# electric_bayarea <-
+#   bayarea_zipcodes %>%
+#   left_join(electric %>% filter(YEAR == 2019),by=c("ZIP"="ZIPCODE")) %>%
+#   group_by(COUNTY) %>%
+#   summarise(
+#     SUMKWH = sum(TOTALKWH, na.rm=T)
+#   )
+# 
+# sum(electric_bayarea$SUMKWH)/sum(electric_zip$sumkwh)
 
 electric_bayarea <- 
   bayarea_zipcodes %>% 
