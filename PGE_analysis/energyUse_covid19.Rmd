@@ -27,6 +27,7 @@ library(htmltools)
 library(ggplot2)
 library(grid)
 library(formattable)
+library(censusapi)
 
 setwd("C:/Users/liusa/github/wfh-covid-analysis/PGE_analysis")
 
@@ -595,6 +596,16 @@ electric_bayarea <-
   ) %>% 
   na.omit()
 
+gas_bayarea <- 
+  bayarea_zipcodes %>% 
+  left_join(gas %>% filter(MONTH <= 3),by=c("ZIP"="ZIPCODE")) %>%
+  dplyr::select(COUNTY, MONTH, YEAR, CUSTOMERCLASS, TOTALTHM) %>% 
+  group_by(COUNTY, MONTH, CUSTOMERCLASS, YEAR) %>% 
+  summarise(
+    SUMTHM = sum(TOTALTHM)
+  ) %>% 
+  na.omit()
+
 # total electricity demand
 electric_bayarea_counties <- 
   electric_bayarea %>% 
@@ -674,6 +685,15 @@ electric_bayarea_difference <-
   spread(YEAR,SUMKWH) %>% 
   mutate("DIFF" = (`2020` - `2019`))
 
+gas_bayarea_difference <- 
+  gas_bayarea %>% 
+  group_by(CUSTOMERCLASS,YEAR,MONTH) %>% # need to add CUSTOMERCLASS to incorporate costs savings below
+  summarise(
+    SUMTHM = sum(SUMTHM)
+  ) %>% 
+  spread(YEAR,SUMTHM) %>% 
+  mutate("DIFF" = (`2020` - `2019`))
+
 electric_bayarea_change_plt <- 
   ggplot(electric_bayarea_difference, aes(x=MONTH,y=DIFF/`2019`,color=COUNTY,group=COUNTY)) +
   geom_line(size=1) +
@@ -732,6 +752,56 @@ electric_bayarea_tbl
 
 ```
  
+## Census
+```{r households}
+Sys.setenv(CENSUS_KEY="c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+
+listCensusMetadata(name = "2018/acs/acs1", type = "variables")
+
+acs <- 
+  getCensus(name = "2018/acs/acs1/profile",
+    vars = c("NAME","DP02_0001E","DP03_0032E","DP03_0024E","DP03_0033E","DP03_0034E","DP03_0035E","DP03_0036E","DP03_0037E",
+             "DP03_0038E","DP03_0039E","DP03_0040E","DP03_0041E","DP03_0042E","DP03_0043E","DP03_0044E","DP03_0045E",
+             "DP03_0062E","DP03_0051E","DP03_0025E"), 
+    region = "county:*", 
+    regionin = "state:06") %>% 
+  filter(county %in% bay_counties$COUNTYFP) %>% 
+  dplyr::rename("HH"="DP02_0001E","EMPLOYED"="DP03_0032E","WORKED FROM HOME"="DP03_0024E", "AGRICULTURE"="DP03_0033E", 
+                "CONSTRUCTION"="DP03_0034E","MANUFACTURING"="DP03_0035E","WHOLESALE"="DP03_0036E","RETAIL"="DP03_0037E",
+                "TRANSPORT"="DP03_0038E","INFORMATION"="DP03_0039E","FINANCE"="DP03_0040E","MANAGEMENT"="DP03_0041E",
+                "EDUCATION"="DP03_0042E","ARTS"="DP03_0043E","SERVICE"="DP03_0044E","PULIC ADMIN"="DP03_0045E",
+                "MEDIAN HH INCOME"="DP03_0062E","MEDIAN INCOME"="DP03_0051E","MEAN COMMUTE TIME"="DP03_0025E")
+
+write.csv(acs,"acs.csv")
+
+electric_bayarea_customers <- 
+  bayarea_zipcodes %>% 
+  left_join(electric %>% filter(YEAR == 2020),by=c("ZIP"="ZIPCODE")) %>%
+  dplyr::select(COUNTY, MONTH, CUSTOMERCLASS, TOTALCUSTOMERS, TOTALKWH) %>% 
+  group_by(MONTH, CUSTOMERCLASS) %>% 
+  summarise(
+    SUMKWH = sum(TOTALKWH),
+    SUMCUST = sum(TOTALCUSTOMERS)
+  ) %>% 
+  na.omit()
+
+write.csv(electric_bayarea_customers,"electric_bayarea_customers.csv")
+
+
+gas_bayarea_customers <- 
+  bayarea_zipcodes %>% 
+  left_join(gas %>% filter(YEAR == 2019),by=c("ZIP"="ZIPCODE")) %>%
+  dplyr::select(COUNTY,MONTH, CUSTOMERCLASS, TOTALCUSTOMERS, TOTALTHM) %>% 
+  group_by(MONTH, CUSTOMERCLASS) %>% 
+  summarise(
+    SUMKWH = sum(TOTALTHM),
+    SUMCUST = sum(TOTALCUSTOMERS)
+  ) %>% 
+  na.omit()
+
+write.csv(gas_bayarea_customers,"gas_bayarea_customers.csv")
+
+```
 
 
 
