@@ -790,7 +790,7 @@ write.csv(electric_bayarea_customers,"electric_bayarea_customers.csv")
 
 gas_bayarea_customers <- 
   bayarea_zipcodes %>% 
-  left_join(gas %>% filter(YEAR == 2019),by=c("ZIP"="ZIPCODE")) %>%
+  left_join(gas %>% filter(YEAR == 2020),by=c("ZIP"="ZIPCODE")) %>%
   dplyr::select(COUNTY,MONTH, CUSTOMERCLASS, TOTALCUSTOMERS, TOTALTHM) %>% 
   group_by(MONTH, CUSTOMERCLASS) %>% 
   summarise(
