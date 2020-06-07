@@ -762,7 +762,7 @@ acs <-
   getCensus(name = "2018/acs/acs1/profile",
     vars = c("NAME","DP02_0001E","DP03_0032E","DP03_0024E","DP03_0033E","DP03_0034E","DP03_0035E","DP03_0036E","DP03_0037E",
              "DP03_0038E","DP03_0039E","DP03_0040E","DP03_0041E","DP03_0042E","DP03_0043E","DP03_0044E","DP03_0045E",
-             "DP03_0062E","DP03_0051E","DP03_0025E"), 
+             "DP03_0062E","DP03_0051E","DP03_0025E","DP02_0015E"), 
     region = "county:*", 
     regionin = "state:06") %>% 
   filter(county %in% bay_counties$COUNTYFP) %>% 
@@ -770,9 +770,9 @@ acs <-
                 "CONSTRUCTION"="DP03_0034E","MANUFACTURING"="DP03_0035E","WHOLESALE"="DP03_0036E","RETAIL"="DP03_0037E",
                 "TRANSPORT"="DP03_0038E","INFORMATION"="DP03_0039E","FINANCE"="DP03_0040E","MANAGEMENT"="DP03_0041E",
                 "EDUCATION"="DP03_0042E","ARTS"="DP03_0043E","SERVICE"="DP03_0044E","PULIC ADMIN"="DP03_0045E",
-                "MEDIAN HH INCOME"="DP03_0062E","MEDIAN INCOME"="DP03_0051E","MEAN COMMUTE TIME"="DP03_0025E")
+                "MEDIAN HH INCOME"="DP03_0062E","MEDIAN INCOME"="DP03_0051E","MEAN COMMUTE TIME"="DP03_0025E","AVG HH"="DP02_0015E")
 
-write.csv(acs,"acs.csv")
+write.csv(acs,"acs_raw.csv")
 
 electric_bayarea_customers <- 
   bayarea_zipcodes %>% 
