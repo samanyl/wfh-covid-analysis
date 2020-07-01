@@ -125,7 +125,7 @@ gas <- readRDS("gas.rds")
 ```
 
 ## Pre-Analysis (Maps)
-```{r map-data, eval=FALSE}
+```{r map-data, eval=TRUE}
 
 # only analyzed between January through March of 2019 and 2020
 # electric_zip <- 
@@ -257,7 +257,7 @@ gasRes_avg2019 <- readRDS("gasRes_avg2019.rds")
 
 ```
 
-```{r electric-map, eval=FALSE}
+```{r electric-map, eval=TRUE}
 
 # pal <- sequential_hcl("red-blue",n=3,rev=T)
 # col <- colorNumeric(pal,domain=electric_pivot$)
@@ -350,7 +350,7 @@ elec
 
 ```
 
-```{r gas-map, eval=FALSE}
+```{r gas-map, eval=TRUE}
 gs <- leaflet() %>%
     addProviderTiles(providers$CartoDB.VoyagerLabelsUnder, group = "Default") %>%
     addTiles(urlTemplate = mapbox_sat, attribution = mapbox_satAtt, group = "Satellite") %>%
